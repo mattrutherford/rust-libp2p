@@ -21,15 +21,17 @@
 use crate::{Transport, transport::TransportError};
 use bytes::{Bytes, IntoBuf};
 use fnv::FnvHashMap;
-use futures::{future::{self, FutureResult}, prelude::*, sync::mpsc, try_ready};
+use futures::{future::{self, FutureResult}, prelude::*, sync::mpsc, try_ready, sink::Wait};
 use lazy_static::lazy_static;
 use multiaddr::{Protocol, Multiaddr};
 use parking_lot::Mutex;
 use rw_stream_sink::RwStreamSink;
 use std::{collections::hash_map::Entry, error, fmt, io, num::NonZeroU64};
 
+const CHANNEL_BUFFER_SIZE: usize = 1000000; // How should this be determined?
+
 lazy_static! {
-    static ref HUB: Mutex<FnvHashMap<NonZeroU64, mpsc::UnboundedSender<Channel<Bytes>>>> = Mutex::new(FnvHashMap::default());
+    static ref HUB: Mutex<FnvHashMap<NonZeroU64, Wait<mpsc::Sender<Channel<Bytes>>>>> = Mutex::new(FnvHashMap::default());
 }
 
 /// Transport that supports `/memory/N` multiaddresses.
@@ -68,10 +70,10 @@ impl Transport for MemoryTransport {
 
         let actual_addr = Protocol::Memory(port.get()).into();
 
-        let (tx, rx) = mpsc::unbounded();
+        let (tx, rx) = mpsc::channel(CHANNEL_BUFFER_SIZE);
         match hub.entry(port) {
             Entry::Occupied(_) => return Err(TransportError::Other(MemoryTransportError::Unreachable)),
-            Entry::Vacant(e) => e.insert(tx),
+            Entry::Vacant(e) => e.insert(tx.wait()),
         };
 
         let listener = Listener {
@@ -93,13 +95,13 @@ impl Transport for MemoryTransport {
             return Err(TransportError::MultiaddrNotSupported(addr));
         };
 
-        let hub = HUB.lock();
-        let chan = if let Some(tx) = hub.get(&port) {
-            let (a_tx, a_rx) = mpsc::unbounded();
-            let (b_tx, b_rx) = mpsc::unbounded();
+        let mut hub = HUB.lock();
+        let chan = if let Some(tx) = hub.get_mut(&port) {
+            let (a_tx, a_rx) = mpsc::channel(CHANNEL_BUFFER_SIZE);
+            let (b_tx, b_rx) = mpsc::channel(CHANNEL_BUFFER_SIZE);
             let a = RwStreamSink::new(Chan { incoming: a_rx, outgoing: b_tx });
             let b = RwStreamSink::new(Chan { incoming: b_rx, outgoing: a_tx });
-            if tx.unbounded_send(b).is_err() {
+            if tx.send(b).is_err() {
                 return Err(TransportError::Other(MemoryTransportError::Unreachable));
             }
             a
@@ -145,7 +147,7 @@ pub struct Listener {
     /// Port we're listening on.
     port: NonZeroU64,
     /// Receives incoming connections.
-    receiver: mpsc::UnboundedReceiver<Channel<Bytes>>,
+    receiver: mpsc::Receiver<Channel<Bytes>>,
 }
 
 impl Stream for Listener {
@@ -197,8 +199,8 @@ pub type Channel<T> = RwStreamSink<Chan<T>>;
 ///
 /// Implements `Sink` and `Stream`.
 pub struct Chan<T = Bytes> {
-    incoming: mpsc::UnboundedReceiver<T>,
-    outgoing: mpsc::UnboundedSender<T>,
+    incoming: mpsc::Receiver<T>,
+    outgoing: mpsc::Sender<T>,
 }
 
 impl<T> Stream for Chan<T> {
