@@ -540,7 +540,13 @@ pub struct TcpTransStream {
 
 impl Read for TcpTransStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        self.inner.read(buf)
+        match self.inner.read(buf) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                debug!("TcpTransStream read error: {}", e);
+                Err(e)
+            },
+        }
     }
 }
 
@@ -550,23 +556,50 @@ impl AsyncRead for TcpTransStream {
     }
 
     fn read_buf<B: bytes::BufMut>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
-        self.inner.read_buf(buf)
+        match self.inner.read_buf(buf) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                debug!("TcpTransStream async read error: {}", e);
+                Err(e)
+            },
+        }
     }
 }
 
 impl Write for TcpTransStream {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        self.inner.write(buf)
+        match self.inner.write(buf) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                debug!("TcpTransStream write error: {}", e);
+                Err(e)
+            }
+        }
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
-        self.inner.flush()
+        match self.inner.flush() {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                debug!("TcpTransStream flush error: {}", e);
+                Err(e)
+            }
+        }
     }
 }
 
 impl AsyncWrite for TcpTransStream {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
-        AsyncWrite::shutdown(&mut self.inner)
+        match AsyncWrite::shutdown(&mut self.inner) {
+            Ok(v) => {
+                debug!("TcpTransStream AsyncWrite::shutdown Ok");
+                Ok(v)
+            },
+            Err(e) => {
+                debug!("TcpTransStream AsyncWrite::shutdown error: {}", e);
+                Err(e)
+            }
+        }
     }
 }
 
