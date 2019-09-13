@@ -576,8 +576,13 @@ impl Write for TcpTransStream {
         match self.inner.write(buf) {
             Ok(v) => Ok(v),
             Err(e) => {
-                debug!("TcpTransStream write error: {}", e);
-                Err(e)
+                match e.kind() {
+                    io::ErrorKind::WouldBlock => Err(e),
+                    _ => {
+                        debug!("TcpTransStream write error: {}", e);
+                        Err(e)
+                    }
+                }
             }
         }
     }
