@@ -25,7 +25,7 @@ use libp2p_core::{
     Transport,
     either::EitherOutput,
     multiaddr::{Protocol, Multiaddr},
-    transport::{ListenerEvent, TransportError}
+    transport::{ListenerEvent, TransportError},
 };
 use log::{debug, trace};
 use tokio_rustls::{client, server};
@@ -33,7 +33,7 @@ use soketto::{
     base,
     connection::{Connection, Mode},
     extension::deflate::Deflate,
-    handshake::{self, Redirect, Response}
+    handshake::{self, Redirect, Response},
 };
 use std::{convert::TryFrom, io};
 use tokio_codec::{Framed, FramedParts};
@@ -53,7 +53,7 @@ pub struct WsConfig<T> {
     max_data_size: u64,
     tls_config: tls::Config,
     max_redirects: u8,
-    use_deflate: bool
+    use_deflate: bool,
 }
 
 impl<T> WsConfig<T> {
@@ -64,7 +64,7 @@ impl<T> WsConfig<T> {
             max_data_size: MAX_DATA_SIZE,
             tls_config: tls::Config::client(),
             max_redirects: 0,
-            use_deflate: false
+            use_deflate: false,
         }
     }
 
@@ -104,35 +104,35 @@ impl<T> WsConfig<T> {
 }
 
 impl<T> Transport for WsConfig<T>
-where
-    T: Transport + Send + Clone + 'static,
-    T::Error: Send + 'static,
-    T::Dial: Send + 'static,
-    T::Listener: Send + 'static,
-    T::ListenerUpgrade: Send + 'static,
-    T::Output: AsyncRead + AsyncWrite + Send + 'static
+    where
+        T: Transport + Send + Clone + 'static,
+        T::Error: Send + 'static,
+        T::Dial: Send + 'static,
+        T::Listener: Send + 'static,
+        T::ListenerUpgrade: Send + 'static,
+        T::Output: AsyncRead + AsyncWrite + Send + 'static
 {
     type Output = BytesConnection<T::Output>;
     type Error = Error<T::Error>;
-    type Listener = Box<dyn Stream<Item = ListenerEvent<Self::ListenerUpgrade>, Error = Self::Error> + Send>;
-    type ListenerUpgrade = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send>;
-    type Dial = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send>;
+    type Listener = Box<dyn Stream<Item=ListenerEvent<Self::ListenerUpgrade>, Error=Self::Error> + Send>;
+    type ListenerUpgrade = Box<dyn Future<Item=Self::Output, Error=Self::Error> + Send>;
+    type Dial = Box<dyn Future<Item=Self::Output, Error=Self::Error> + Send>;
 
     fn listen_on(self, addr: Multiaddr) -> Result<Self::Listener, TransportError<Self::Error>> {
         let mut inner_addr = addr.clone();
 
         let (use_tls, proto) = match inner_addr.pop() {
-            Some(p@Protocol::Wss(_)) =>
+            Some(p @ Protocol::Wss(_)) =>
                 if self.tls_config.server.is_some() {
                     (true, p)
                 } else {
                     debug!("/wss address but TLS server support is not configured");
-                    return Err(TransportError::MultiaddrNotSupported(addr))
+                    return Err(TransportError::MultiaddrNotSupported(addr));
                 }
-            Some(p@Protocol::Ws(_)) => (false, p),
+            Some(p @ Protocol::Ws(_)) => (false, p),
             _ => {
                 debug!("{} is not a websocket multiaddr", addr);
-                return Err(TransportError::MultiaddrNotSupported(addr))
+                return Err(TransportError::MultiaddrNotSupported(addr));
             }
         };
 
@@ -205,9 +205,9 @@ where
                                 })
                         });
                     ListenerEvent::Upgrade {
-                        upgrade: Box::new(upgraded) as Box<dyn Future<Item = _, Error = _> + Send>,
+                        upgrade: Box::new(upgraded) as Box<dyn Future<Item=_, Error=_> + Send>,
                         local_addr,
-                        remote_addr
+                        remote_addr,
                     }
                 }
             });
@@ -220,7 +220,7 @@ where
             // ok
         } else {
             debug!("{} is not a websocket multiaddr", addr);
-            return Err(TransportError::MultiaddrNotSupported(addr))
+            return Err(TransportError::MultiaddrNotSupported(addr));
         }
         // We are looping here in order to follow redirects (if any):
         let max_redirects = self.max_redirects;
@@ -229,7 +229,7 @@ where
                 Either::A(redirect) => {
                     if remaining == 0 {
                         debug!("too many redirects");
-                        return Err(Error::TooManyRedirects)
+                        return Err(Error::TooManyRedirects);
                     }
                     let a = location_to_multiaddr(redirect.location())?;
                     Ok(Loop::Continue((a, cfg, remaining - 1)))
@@ -243,10 +243,10 @@ where
 
 /// Attempty to dial the given address and perform a websocket handshake.
 fn dial<T>(address: Multiaddr, config: WsConfig<T>)
-    -> impl Future<Item = Either<Redirect, BytesConnection<T::Output>>, Error = Error<T::Error>>
-where
-    T: Transport,
-    T::Output: AsyncRead + AsyncWrite
+           -> impl Future<Item=Either<Redirect, BytesConnection<T::Output>>, Error=Error<T::Error>>
+    where
+        T: Transport,
+        T::Output: AsyncRead + AsyncWrite
 {
     trace!("dial address: {}", address);
 
@@ -264,13 +264,13 @@ where
         Some(Protocol::Wss(path)) => {
             if dns_name.is_none() {
                 debug!("no DNS name in {}", address);
-                return Either::A(future::err(Error::InvalidMultiaddr(address)))
+                return Either::A(future::err(Error::InvalidMultiaddr(address)));
             }
             (true, path)
         }
         _ => {
             debug!("{} is not a websocket multiaddr", address);
-            return Either::A(future::err(Error::InvalidMultiaddr(address)))
+            return Either::A(future::err(Error::InvalidMultiaddr(address)));
         }
     };
 
@@ -297,7 +297,7 @@ where
                         Error::Tls(tls::Error::from(e))
                     })
                     .map(|s| EitherOutput::First(EitherOutput::First(s)));
-                return Either::A(future)
+                return Either::A(future);
             }
             // continue with plain stream
             Either::B(future::ok(EitherOutput::Second(stream)))
@@ -320,11 +320,11 @@ where
                         None => {
                             debug!("connection to {} terminated during handshake", address1);
                             let e: io::Error = io::ErrorKind::ConnectionAborted.into();
-                            return Err(Error::Handshake(Box::new(e)))
+                            return Err(Error::Handshake(Box::new(e)));
                         }
                         Some(Response::Redirect(r)) => {
                             debug!("received {}", r);
-                            return Ok(Either::A(r))
+                            return Ok(Either::A(r));
                         }
                         Some(Response::Accepted(_)) => {
                             trace!("websocket handshake with {} successful", address1)
@@ -385,7 +385,7 @@ fn location_to_multiaddr<T>(location: &str) -> Result<Multiaddr, Error<T>> {
                 a.push(Protocol::Ws(url.path().into()))
             } else {
                 debug!("unsupported scheme: {}", s);
-                return Err(Error::InvalidRedirectLocation)
+                return Err(Error::InvalidRedirectLocation);
             }
             Ok(a)
         }
@@ -398,8 +398,8 @@ fn location_to_multiaddr<T>(location: &str) -> Result<Multiaddr, Error<T>> {
 
 /// Create a `Connection` from an existing `Framed` value.
 fn new_connection<T, C>(framed: Framed<T, C>, max_size: u64, mode: Mode) -> (C, Connection<T>)
-where
-    T: AsyncRead + AsyncWrite
+    where
+        T: AsyncRead + AsyncWrite
 {
     let mut codec = base::Codec::new();
     codec.set_max_data_size(max_size);
@@ -422,23 +422,31 @@ pub struct BytesConnection<T> {
     inner: Connection<EitherOutput<EitherOutput<client::TlsStream<T>, server::TlsStream<T>>, T>>
 }
 
-impl<T: AsyncRead + AsyncWrite> Stream for BytesConnection<T> {
+impl<T: AsyncRead + AsyncWrite + std::fmt::Debug> Stream for BytesConnection<T> {
     type Item = BytesMut;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        let data = try_ready!(self.inner.poll().map_err(|e| io::Error::new(io::ErrorKind::Other, e)));
+        let data = try_ready!(self.inner.poll().map_err(|e| {
+            debug!("BytesConnection::poll error: {}", e);
+            debug!("BytesConnection self {:?}", self);
+            io::Error::new(io::ErrorKind::Other, e)
+        }));
         Ok(Async::Ready(data.map(base::Data::into_bytes)))
     }
 }
 
-impl<T: AsyncRead + AsyncWrite> Sink for BytesConnection<T> {
+impl<T: AsyncRead + AsyncWrite + std::fmt::Debug> Sink for BytesConnection<T> {
     type SinkItem = BytesMut;
     type SinkError = io::Error;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
         let result = self.inner.start_send(base::Data::Binary(item))
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
+            .map_err(|e| {
+                debug!("BytesConnection::start_send error: {}", e);
+                debug!("BytesConnection self {:?}", self);
+                io::Error::new(io::ErrorKind::Other, e)
+            });
 
         if let AsyncSink::NotReady(data) = result? {
             Ok(AsyncSink::NotReady(data.into_bytes()))
@@ -448,11 +456,19 @@ impl<T: AsyncRead + AsyncWrite> Sink for BytesConnection<T> {
     }
 
     fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
-        self.inner.poll_complete().map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        self.inner.poll_complete().map_err(|e| {
+            debug!("BytesConnection::poll_complete error: {}", e);
+            debug!("BytesConnection self {:?}", self);
+            io::Error::new(io::ErrorKind::Other, e)
+        })
     }
 
     fn close(&mut self) -> Poll<(), Self::SinkError> {
-        self.inner.close().map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        self.inner.close().map_err(|e| {
+            debug!("BytesConnection::close error: {}", e);
+            debug!("BytesConnection self {:?}", self);
+            io::Error::new(io::ErrorKind::Other, e)
+        })
     }
 }
 

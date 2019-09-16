@@ -93,12 +93,12 @@ impl<T> From<framed::WsConfig<T>> for WsConfig<T> {
 
 impl<T> Transport for WsConfig<T>
 where
-    T: Transport + Send + Clone + 'static,
+    T: Transport + Send + Clone + 'static + std::fmt::Debug,
     T::Error: Send + 'static,
     T::Dial: Send + 'static,
     T::Listener: Send + 'static,
     T::ListenerUpgrade: Send + 'static,
-    T::Output: AsyncRead + AsyncWrite + Send + 'static
+    T::Output: AsyncRead + AsyncWrite + Send + 'static + std::fmt::Debug
 {
     type Output = RwStreamSink<BytesConnection<T::Output>>;
     type Error = Error<T::Error>;
@@ -131,7 +131,7 @@ pub type WrapperFn<T> =
 /// implementing `AsyncRead` + `AsyncWrite`.
 fn wrap_connection<T>(c: BytesConnection<T>, _: ConnectedPoint) -> RwStreamSink<BytesConnection<T>>
 where
-    T: AsyncRead + AsyncWrite
+    T: AsyncRead + AsyncWrite + std::fmt::Debug
 {
     RwStreamSink::new(c)
 }
